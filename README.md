@@ -1,5 +1,3 @@
 
-
 <!-- chay rosbrigge -->
-source /opt/ros/jazzy/setup.bash
-ros2 run rosbridge_server rosbridge_websocket --ros-args --params-file ~/rosbridge_params.yaml
+ros2 launch ~/ros_web/launch/rosbridge_fixed.launch.py

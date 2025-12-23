@@ -1,48 +1,102 @@
 "use client";
 import { useRef, useEffect } from "react";
 
-export default function MapCanvas({ width=800, height=600, robotPose, lidarPoints=[] }) {
-  const canvasRef = useRef(null);
-  const zoomRef = useRef(65);
-  const offsetRef = useRef({ x: width/2, y: height/2 });
+function cssVar(name, fallback) {
+  return (
+    getComputedStyle(document.documentElement)
+      .getPropertyValue(name)
+      .trim() || fallback
+  );
+}
 
+export default function MapCanvas({
+  robotPose,
+  lidarPoints = [],
+  mapMode,
+  onLoadMap,
+  onCreateMap,
+}) {
+  const canvasRef = useRef(null);
+  const containerRef = useRef(null);
+
+  const zoomRef = useRef(65);
+  const offsetRef = useRef({ x: 0, y: 0 });
+
+  // ===== resize canvas theo container =====
   useEffect(() => {
     const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
+
+    function resize() {
+      canvas.width = container.clientWidth;
+      canvas.height = container.clientHeight;
+
+      offsetRef.current.x = canvas.width / 2;
+      offsetRef.current.y = canvas.height / 2;
+    }
+
+    resize();
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
+  }, []);
+
+  // ===== draw map =====
+  useEffect(() => {
+    if (!mapMode) return;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
     const ctx = canvas.getContext("2d");
     let frame;
 
     function draw() {
-      ctx.fillStyle = "#0d1117";
-      ctx.fillRect(0, 0, width, height);
+      const w = canvas.width;
+      const h = canvas.height;
+
+      const bg = cssVar("--bg-main", "#0d1117");
+      const grid = cssVar("--grid", "rgba(255,255,255,0.05)");
+      const lidarColor = cssVar("--lidar", "rgba(255,80,80,0.9)");
+      const robotColor = cssVar("--robot", "#4ea1ff");
+
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, w, h);
 
       const z = zoomRef.current;
 
-      // Grid
-      ctx.strokeStyle = "rgba(255,255,255,0.05)";
-      for (let x = offsetRef.current.x % z; x < width; x += z) {
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
+      // grid
+      ctx.strokeStyle = grid;
+      for (let x = offsetRef.current.x % z; x < w; x += z) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, h);
+        ctx.stroke();
       }
-      for (let y = offsetRef.current.y % z; y < height; y += z) {
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
+      for (let y = offsetRef.current.y % z; y < h; y += z) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+        ctx.stroke();
       }
 
       ctx.save();
       ctx.translate(offsetRef.current.x, offsetRef.current.y);
 
-      // Lidar
-      ctx.fillStyle = "rgba(255,80,80,0.9)";
-      lidarPoints.forEach(p => {
+      // lidar
+      ctx.fillStyle = lidarColor;
+      lidarPoints.forEach((p) => {
         ctx.beginPath();
-        ctx.arc(p.x * z, -p.y * z, 3, 0, 2 * Math.PI);
+        ctx.arc(p.x * z, -p.y * z, 3, 0, Math.PI * 2);
         ctx.fill();
       });
 
-      // Robot
+      // robot
       if (robotPose) {
         ctx.save();
         ctx.translate(robotPose.x * z, -robotPose.y * z);
         ctx.rotate(-robotPose.yaw);
-        ctx.fillStyle = "#4ea1ff";
+        ctx.fillStyle = robotColor;
         ctx.beginPath();
         ctx.moveTo(12, 0);
         ctx.lineTo(-8, -8);
@@ -58,7 +112,77 @@ export default function MapCanvas({ width=800, height=600, robotPose, lidarPoint
 
     draw();
     return () => cancelAnimationFrame(frame);
-  }, [robotPose, lidarPoints]);
+  }, [robotPose, lidarPoints, mapMode]);
 
-  return <canvas ref={canvasRef} width={width} height={height} />;
+  return (
+    <div
+      ref={containerRef}
+      style={{
+        position: "relative",
+        width: "100%",
+        height: "100%",
+        borderRadius: 12,
+        overflow: "hidden",
+        background: "var(--bg-main)",
+      }}
+    >
+      <canvas ref={canvasRef} />
+
+      {!mapMode && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: "rgba(0,0,0,0.55)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <div
+            style={{
+              background: "var(--bg-panel)",
+              padding: 28,
+              borderRadius: 14,
+              border: "1px solid var(--border)",
+              minWidth: 320,
+              textAlign: "center",
+            }}
+          >
+            <h3 style={{ marginTop: 0 }}>No Map Selected</h3>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <button
+                onClick={onLoadMap}
+                style={{
+                  padding: "12px",
+                  background: "var(--primary)",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                }}
+              >
+                📂 Load Existing Map
+              </button>
+
+              <button
+                onClick={onCreateMap}
+                style={{
+                  padding: "12px",
+                  background: "var(--success)",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                }}
+              >
+                🧭 Create New Map (SLAM)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }

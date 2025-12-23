@@ -8,6 +8,7 @@ import { useLaserScan } from "./hooks/useLaserScan";
 import Header from "./components/Header";
 import LeftPanel from "./components/LeftPanel";
 import MapCanvas from "./components/MapCanvas";
+import DebugPopup from "./components/DebugPopup";
 import Popup from "./components/Popup";
 import LidarPopup from "./components/LidarPopup";
 
@@ -16,6 +17,7 @@ export default function Page() {
   const [lastScanTime, setLastScanTime] = useState(null);
   const [lastTfTime, setLastTfTime] = useState(null);
   const [openLidar, setOpenLidar] = useState(false);
+  const [mapMode, setMapMode] = useState(null);
 
   const onDebug = (msg) => {
     console.log(msg);
@@ -37,13 +39,33 @@ export default function Page() {
     onDebug,
     setLastScanTime
   );
+
   const lidarCount = lidarPoints.length;
 
   return (
-    <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
+    <div
+      style={{
+        height: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        background: "var(--bg-main)",
+        color: "var(--text-main)",
+      }}
+    >
+      {/* HEADER */}
       <Header connected={connected} connect={connect} disconnect={disconnect} />
 
-      <div style={{ display: "flex", gap: 20, padding: 20 }}>
+      {/* MAIN CONTENT */}
+      <div
+        style={{
+          flex: 1,                  // ⬅️ ăn toàn bộ chiều cao còn lại
+          display: "flex",
+          gap: 20,
+          padding: 20,
+          minHeight: 0,             // ⬅️ FIX flexbox kinh điển
+        }}
+      >
+        {/* LEFT PANEL */}
         <LeftPanel
           ros={ros}
           robotPose={robotPose}
@@ -51,32 +73,49 @@ export default function Page() {
           tfOk={tfOk}
           lastScanTime={lastScanTime}
           lastTfTime={lastTfTime}
-          debugLogs={debugLogs}
           openLidar={() => setOpenLidar(true)}
         />
 
-        <div style={{ flex: 1 }}>
+        {/* MAP AREA */}
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            minHeight: 0,            // ⬅️ QUAN TRỌNG
+          }}
+        >
           <div
             style={{
-              background: "#0d1117",
-              padding: 14,
+              background: "var(--bg-card)",
               borderRadius: 12,
-              border: "1px solid #222",
-              width: 640,
+              border: "1px solid var(--border)",
+              padding: 14,
+              flex: 1,               // ⬅️ map chiếm hết
+              display: "flex",
+              flexDirection: "column",
+              minHeight: 0,
             }}
           >
             <h3 style={{ marginBottom: 10 }}>🗺 Map View</h3>
 
-            <MapCanvas
-              width={612}
-              height={460}
-              robotPose={robotPose}
-              lidarPoints={lidarPoints}
-            />
+            <div style={{ flex: 1, minHeight: 0 }}>
+              <MapCanvas
+                robotPose={robotPose}
+                lidarPoints={lidarPoints}
+                mapMode={mapMode}
+                onLoadMap={() => setMapMode("load")}
+                onCreateMap={() => setMapMode("create")}
+              />
+            </div>
           </div>
         </div>
       </div>
 
+      {/* DEBUG */}
+      <DebugPopup logs={debugLogs} />
+
+      {/* LIDAR POPUP */}
       <Popup open={openLidar} title="Lidar" onClose={() => setOpenLidar(false)}>
         <LidarPopup ros={ros} />
       </Popup>
