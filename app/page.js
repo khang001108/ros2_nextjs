@@ -1,122 +1,85 @@
 "use client";
-import { useState, useRef } from "react";
-import Popup from "../components/Popup";
-import LidarRadar from "../components/LidarRadar";
-import CmdVelControl from "../components/CmdVelControl";
-import MapWithOverlay from "../components/MapWithOverlay";
-import TFSubscriber from "../components/TFSubscriber";
-import PathViewer from "../components/PathViewer";
+
+import { useState } from "react";
+import { useRos } from "./hooks/useRos";
+import { useTF } from "./hooks/useTF";
+import { useLaserScan } from "./hooks/useLaserScan";
+
+import Header from "./components/Header";
+import LeftPanel from "./components/LeftPanel";
+import MapCanvas from "./components/MapCanvas";
+import Popup from "./components/Popup";
+import LidarPopup from "./components/LidarPopup";
 
 export default function Page() {
+  const [debugLogs, setDebugLogs] = useState([]);
+  const [lastScanTime, setLastScanTime] = useState(null);
+  const [lastTfTime, setLastTfTime] = useState(null);
   const [openLidar, setOpenLidar] = useState(false);
-  const [robotPose, setRobotPose] = useState(null);
-  const [path, setPath] = useState([]);
-  const lidarPointsRef = useRef([]);
 
-  // callback for TF pose update
-  function handlePose(p) {
-    setRobotPose(p);
-  }
+  const onDebug = (msg) => {
+    console.log(msg);
+    setDebugLogs((prev) => [...prev, msg]);
+  };
 
-  // callback for path
-  function handlePath(poses) {
-    setPath(poses);
-  }
+  const { ros, connected, connect, disconnect } = useRos(
+    "ws://localhost:9090",
+    onDebug
+  );
 
-  // We'll create a small helper that transforms incoming /scan into world points
-  // For simplicity: LidarRadar logs points in local robot frame; we'll create a lightweight websocket subscriber here
-  // Instead, let's use a minimal ROSLIB subscriber to /scan and convert using current robotPose
-  // We'll define it inline (client component), but keep it minimal:
-  const [rosConnectedForScan, setRosConnectedForScan] = useState(false);
+  const robotPose = useTF(ros, onDebug, setLastTfTime);
+  const tfOk = !!robotPose;
 
-  // Inline subscriber for /scan that fills lidarPointsRef using robotPose transform
-  function startScanSubscription() {
-    // dynamic import to avoid SSR issues:
-    import("roslib").then(ROSLIB => {
-      const ros = new ROSLIB.Ros({ url: "ws://localhost:9090" });
-      setRosConnectedForScan(true);
-      const scanTopic = new ROSLIB.Topic({ ros, name: "/scan", messageType: "sensor_msgs/LaserScan" });
-      scanTopic.subscribe((msg) => {
-        const ranges = msg.ranges;
-        const angle_min = msg.angle_min;
-        const angle_inc = msg.angle_increment;
-        const max_range = msg.range_max || 10.0;
-        const points = [];
-        for (let i=0;i<ranges.length;i++){
-          const r = ranges[i];
-          if (!isFinite(r) || r <= msg.range_min || r > max_range) continue;
-          const ang = angle_min + i*angle_inc;
-          const rx = Math.cos(ang)*r;
-          const ry = Math.sin(ang)*r;
-          // if we have robotPose in map frame, transform to map coords (simple 2D transform)
-          if (robotPose) {
-            const mx = robotPose.x + Math.cos(robotPose.yaw)*rx - Math.sin(robotPose.yaw)*ry;
-            const my = robotPose.y + Math.sin(robotPose.yaw)*rx + Math.cos(robotPose.yaw)*ry;
-            points.push({ x: mx, y: my });
-          }
-        }
-        lidarPointsRef.current = points;
-        // trigger re-render by changing state (cheap way)
-        // we toggle a dummy state
-        setDummy(d => d+1);
-      });
-    });
-  }
-
-  const [dummy, setDummy] = useState(0);
+  const lidarPoints = useLaserScan(
+    ros,
+    "/scan",
+    robotPose,
+    onDebug,
+    setLastScanTime
+  );
+  const lidarCount = lidarPoints.length;
 
   return (
-    <div style={{ padding: 18 }}>
-      <h1>ROS Web — Map + Lidar + Control</h1>
+    <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
+      <Header connected={connected} connect={connect} disconnect={disconnect} />
 
-      <div style={{ display:"flex", gap: 12, marginTop: 12 }}>
-        <button onClick={() => setOpenLidar(true)}>Open Lidar Popup</button>
-        <button onClick={() => startScanSubscription()}>Start Lidar Subscription (overlay)</button>
-      </div>
+      <div style={{ display: "flex", gap: 20, padding: 20 }}>
+        <LeftPanel
+          ros={ros}
+          robotPose={robotPose}
+          lidarCount={lidarCount}
+          tfOk={tfOk}
+          lastScanTime={lastScanTime}
+          lastTfTime={lastTfTime}
+          debugLogs={debugLogs}
+          openLidar={() => setOpenLidar(true)}
+        />
 
-      <div style={{ display:"flex", gap: 12, marginTop: 16 }}>
-        <div style={{ width: 560 }}>
-          <MapWithOverlay
-            robotPose={robotPose}
-            lidarPoints={lidarPointsRef.current}
-            path={path}
-          />
-        </div>
+        <div style={{ flex: 1 }}>
+          <div
+            style={{
+              background: "#0d1117",
+              padding: 14,
+              borderRadius: 12,
+              border: "1px solid #222",
+              width: 640,
+            }}
+          >
+            <h3 style={{ marginBottom: 10 }}>🗺 Map View</h3>
 
-        <div style={{ width: 280 }}>
-          <h4>Controls</h4>
-          <CmdVelControl />
-          <div style={{ marginTop: 16 }}>
-            <h4>Path</h4>
-            <button onClick={() => {/* could send path clear or similar */}}>Clear Path</button>
+            <MapCanvas
+              width={612}
+              height={460}
+              robotPose={robotPose}
+              lidarPoints={lidarPoints}
+            />
           </div>
         </div>
       </div>
 
-      <Popup open={openLidar} title="Lidar Popup" onClose={() => setOpenLidar(false)} width={460}>
-        <div style={{ display:"flex", gap:12 }}>
-          <div style={{ flex:1 }}>
-            <LidarRadar />
-          </div>
-          <div style={{ width: 140 }}>
-            <div style={{ marginBottom:10 }}>
-              <strong>Actions</strong>
-            </div>
-            <div>
-              <button onClick={() => startScanSubscription()}>Overlay Lidar on Map</button>
-            </div>
-            <div style={{ marginTop:8 }}>
-              <em>Note:</em> click Start Lidar Subscription to overlay points on the map.
-            </div>
-          </div>
-        </div>
+      <Popup open={openLidar} title="Lidar" onClose={() => setOpenLidar(false)}>
+        <LidarPopup ros={ros} />
       </Popup>
-
-      {/* TF subscription for robot pose (base_link) - callbacks update robotPose */}
-      <TFSubscriber onPose={handlePose} />
-
-      {/* Path viewer: subscribe /plan (or /global_plan) and update path */}
-      <PathViewer topicName="/plan" onPath={handlePath} />
     </div>
   );
 }
