@@ -87,7 +87,7 @@ export default function LeftPanel({
             cursor: "pointer",
           }}
         >
-          Open Lidar Popup
+          Open Lidar View
         </button>
       </div>
 
