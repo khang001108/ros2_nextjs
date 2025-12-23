@@ -5,9 +5,8 @@ import * as ROSLIB from "roslib";
 /* ===== CSS VAR HELPER ===== */
 function cssVar(name, fallback) {
   return (
-    getComputedStyle(document.documentElement)
-      .getPropertyValue(name)
-      .trim() || fallback
+    getComputedStyle(document.documentElement).getPropertyValue(name).trim() ||
+    fallback
   );
 }
 
@@ -27,6 +26,7 @@ export default function LidarPopup({ ros, onClose }) {
   const [showLaser, setShowLaser] = useState(true);
   const [pointSize, setPointSize] = useState(3);
   const [alpha, setAlpha] = useState(1);
+  const [frameId, setFrameId] = useState("N/A");
 
   /* ===== SUBSCRIBE LASER ===== */
   useEffect(() => {
@@ -40,10 +40,13 @@ export default function LidarPopup({ ros, onClose }) {
 
     sub.subscribe((msg) => {
       scanRef.current = msg;
+
       setInfo({
         points: msg.ranges.length,
         rangeMax: msg.range_max,
       });
+
+      setFrameId(msg.header?.frame_id || "unknown");
     });
 
     return () => sub.unsubscribe();
@@ -97,8 +100,7 @@ export default function LidarPopup({ ros, onClose }) {
       const scan = scanRef.current;
       if (scan && showLaser) {
         const { ranges, angle_min, angle_increment, range_max } = scan;
-        const scale =
-          (Math.min(w, h) / 2 / range_max) * zoomRef.current;
+        const scale = (Math.min(w, h) / 2 / range_max) * zoomRef.current;
 
         ctx.fillStyle = laser;
         ctx.globalAlpha = alpha;
@@ -162,8 +164,7 @@ export default function LidarPopup({ ros, onClose }) {
         }}
       >
         <b>
-          🔴 LaserScan{" "}
-          <span style={{ color: "var(--text-muted)" }}>/scan</span>
+          🔴 LaserScan <span style={{ color: "var(--text-muted)" }}>/scan</span>
         </b>
         <button
           onClick={onClose}
@@ -181,6 +182,20 @@ export default function LidarPopup({ ros, onClose }) {
 
       {/* ===== BODY ===== */}
       <div style={{ flex: 1, display: "flex" }}>
+        {/* ===== FIXED FRAME ===== */}
+        <div
+          style={{
+            padding: 8,
+            background: "var(--bg-panel)",
+            border: "1px solid var(--lidar-border)",
+            borderRadius: 6,
+            fontSize: 12,
+          }}
+        >
+          <div style={{ color: "var(--text-muted)" }}>Fixed Frame</div>
+          <b style={{ color: "var(--primary)" }}>{frameId}</b>
+        </div>
+
         {/* CONFIG PANEL */}
         <div
           style={{
